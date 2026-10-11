@@ -1161,6 +1161,53 @@ fn total_token_usage_includes_all_items_after_last_model_generated_item() {
 }
 
 #[test]
+fn reported_usage_does_not_double_count_older_reasoning_without_header() {
+    let mut history = create_history_with_items(vec![
+        reasoning_with_encrypted_content(1_625_470),
+        user_msg("next turn"),
+        assistant_msg("completed response"),
+    ]);
+    history.update_token_info(
+        &TokenUsage {
+            input_tokens: 495_587,
+            output_tokens: 548,
+            total_tokens: 496_135,
+            ..Default::default()
+        },
+        Some(828_400),
+    );
+    let tool_output = custom_tool_call_output(&"c".repeat(37), &"x".repeat(39_700));
+    history.record_items([&tool_output], TruncationPolicy::Tokens(100_000));
+
+    let usage = history.get_total_token_usage(/*server_reasoning_included*/ false);
+    assert_eq!(usage, 506_070);
+    assert!(usage < 784_800);
+}
+
+#[test]
+fn unreported_usage_keeps_older_reasoning_estimates() {
+    for empty_receipt in [false, true] {
+        let mut history = create_history_with_items(vec![
+            reasoning_with_encrypted_content(1_892),
+            user_msg("next turn"),
+            assistant_msg("unmeasured response"),
+        ]);
+        if empty_receipt {
+            history.update_token_info(&TokenUsage::default(), None);
+        }
+
+        assert_eq!(
+            history.get_total_token_usage(/*server_reasoning_included*/ false),
+            193
+        );
+        assert_eq!(
+            history.get_total_token_usage(/*server_reasoning_included*/ true),
+            0
+        );
+    }
+}
+
+#[test]
 fn for_prompt_strips_media_when_model_does_not_support_it() {
     let items = vec![
         ResponseItem::Message {

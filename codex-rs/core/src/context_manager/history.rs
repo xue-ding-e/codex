@@ -934,6 +934,9 @@ impl ContextManager {
 
     /// When true, the server already accounted for past reasoning tokens and
     /// the client should not re-estimate them.
+    /// A nonzero usage receipt is already a baseline for the sampled history,
+    /// even when the optional reasoning-included header is absent. Only local
+    /// items appended afterward should increase that reported baseline.
     pub(crate) fn get_total_token_usage(&self, server_reasoning_included: bool) -> i64 {
         let last_tokens = self
             .token_info
@@ -944,7 +947,7 @@ impl ContextManager {
             .items_after_last_model_generated_item()
             .map(estimate_item_token_count)
             .fold(0i64, i64::saturating_add);
-        if server_reasoning_included {
+        if server_reasoning_included || last_tokens > 0 {
             last_tokens.saturating_add(items_after_last_model_generated_tokens)
         } else {
             last_tokens
